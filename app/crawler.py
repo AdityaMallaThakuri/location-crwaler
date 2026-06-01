@@ -190,15 +190,38 @@ def validate_and_normalise_url(url: str) -> tuple:
 # EC1 – JS-rendered detection
 # ---------------------------------------------------------------------------
 
+# Substrings in script src / meta generator that flag a known JS-heavy platform.
+# These sites render all content client-side; regex extraction will always fail.
+_JS_PLATFORM_SIGNATURES = [
+    "parastorage.com",          # Wix
+    "static.wixstatic.com",     # Wix assets
+    "squarespace.com",          # Squarespace
+    "webflow.io",               # Webflow
+    "cdn.shopify.com",          # Shopify
+]
+
+
 def is_js_only(html: str | None) -> bool:
     """
-    Return True when the page body has fewer than JS_BODY_THRESHOLD visible
-    characters yet contains <script> tags — the hallmark of a JS-rendered SPA
-    with no meaningful static content (EC1, threshold = 500 chars).
+    Return True when the page is almost certainly JS-rendered with no
+    extractable static address content.
+
+    Two detection paths:
+      1. Body text < JS_BODY_THRESHOLD chars and <script> tags present.
+      2. Page loads from a known JS-heavy platform (Wix, Squarespace, etc.)
+         regardless of visible text length — these platforms always render
+         addresses client-side, so regex extraction will always return empty.
     """
     if not html:
         return True
     soup = BeautifulSoup(html, "html.parser")
+
+    # Path 2 — known platform signatures in script src or meta generator
+    for sig in _JS_PLATFORM_SIGNATURES:
+        if sig in html:
+            return True
+
+    # Path 1 — original threshold check
     body = soup.find("body")
     target = body if body else soup
     text = target.get_text(strip=True)
