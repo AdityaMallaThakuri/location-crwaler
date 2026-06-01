@@ -13,6 +13,7 @@ Edge cases handled (Phase 3):
   EC6  Footer city list      – dash separator ( - ) and service-prefix stripping
 """
 
+import json
 import re
 from bs4 import BeautifulSoup
 
@@ -310,6 +311,65 @@ def calculate_confidence(
 
 
 # ---------------------------------------------------------------------------
+# JSON-LD schema.org extraction
+# ---------------------------------------------------------------------------
+
+def _collect_postal_addresses(obj: object, addresses: list, seen: set) -> None:
+    """Recursively walk a JSON-LD object collecting PostalAddress entries."""
+    if not isinstance(obj, dict):
+        return
+    if obj.get("@type") == "PostalAddress":
+        street = obj.get("streetAddress", "").strip()
+        city = obj.get("addressLocality", "").strip()
+        state = obj.get("addressRegion", "").strip()
+        postal = obj.get("postalCode", "").strip()
+        if street and city and state:
+            addr = f"{street}, {city}, {state}"
+            if postal:
+                addr += f" {postal}"
+            key = _normalise_address(addr)
+            if key not in seen:
+                seen.add(key)
+                addresses.append(addr)
+    for value in obj.values():
+        if isinstance(value, dict):
+            _collect_postal_addresses(value, addresses, seen)
+        elif isinstance(value, list):
+            for item in value:
+                _collect_postal_addresses(item, addresses, seen)
+
+
+def extract_schema_addresses(html: str) -> list:
+    """
+    Extract addresses from JSON-LD <script type="application/ld+json"> blocks.
+
+    Many sites embed PostalAddress structured data even when visible page text
+    is minimal or JS-rendered.  This is the most reliable extraction path for
+    modern WordPress and React sites.
+
+    Returns:
+        list[str]: Unique formatted address strings, possibly empty.
+    """
+    if not html:
+        return []
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        addresses: list = []
+        seen: set = set()
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                data = json.loads(script.string or "")
+            except (json.JSONDecodeError, TypeError):
+                continue
+            items = data if isinstance(data, list) else [data]
+            for item in items:
+                _collect_postal_addresses(item, addresses, seen)
+        return addresses
+    except Exception:  # noqa: BLE001
+        return []
+
+
+# ---------------------------------------------------------------------------
 # Main entry points
 # ---------------------------------------------------------------------------
 
@@ -347,6 +407,17 @@ def extract_locations(url: str, html: str) -> dict:
 
     try:
         addresses = extract_addresses(html)
+
+        # Merge in any PostalAddress entries from JSON-LD structured data.
+        # Many modern sites embed these even when visible text is minimal.
+        schema_addrs = extract_schema_addresses(html)
+        if schema_addrs:
+            seen_keys = {_normalise_address(a) for a in addresses}
+            for addr in schema_addrs:
+                if _normalise_address(addr) not in seen_keys:
+                    seen_keys.add(_normalise_address(addr))
+                    addresses.append(addr)
+
         phones = count_phones(html)
         cards = detect_location_cards(html)
         cities = extract_city_mentions(html)

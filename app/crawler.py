@@ -419,12 +419,6 @@ def crawl(url: str) -> dict:
 
     base = _base_url(url)
 
-    # robots.txt check
-    if not is_robots_allowed(url):
-        result["error"] = "Blocked by robots.txt"
-        result["error_type"] = "blocked"
-        return result
-
     # Step 1: Fetch homepage
     homepage_html, status, error = fetch_page(url)
 
