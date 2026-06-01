@@ -21,8 +21,8 @@ Every response is HTTP 200 with a structured JSON body — errors are communicat
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/YOUR_USERNAME/medspa-location-crawler.git
-cd medspa-location-crawler
+git clone https://github.com/AdityaMallaThakuri/location-crwaler.git
+cd location-crwaler
 
 # 2. Create and activate a virtual environment
 python -m venv venv
@@ -86,72 +86,63 @@ pytest tests/test_crawler.py -v
 
 ---
 
-## Deploy to Render — Step by Step
+## Deploy to Railway
 
 ### Prerequisites
-- GitHub account
-- Render account (free tier works): https://render.com
+- GitHub account (repo already pushed)
+- Railway account: https://railway.app (sign up free with GitHub)
+- Railway CLI (optional but faster): `npm install -g @railway/cli`
 
-### Step 1 — Push to GitHub
+---
+
+### Option A — Dashboard Deploy (no CLI needed)
+
+1. Go to https://railway.app and sign in with GitHub
+2. Click **"New Project"** → **"Deploy from GitHub repo"**
+3. Select **`AdityaMallaThakuri/location-crwaler`**
+4. Railway auto-detects `railway.json` and configures everything
+5. Click **"Deploy"** — build takes ~60 seconds
+6. Go to **Settings → Networking → Generate Domain** to get your public URL
+
+---
+
+### Option B — CLI Deploy (faster)
 
 ```bash
-# Inside the project directory
-git init
-git add .
-git commit -m "Initial commit: MedSpa Location Crawler"
+# Install Railway CLI
+npm install -g @railway/cli
 
-# Create a new GitHub repo (GitHub CLI)
-gh repo create medspa-location-crawler --public --source=. --remote=origin --push
+# Log in
+railway login
 
-# OR manually via GitHub UI, then:
-git remote add origin https://github.com/YOUR_USERNAME/medspa-location-crawler.git
-git branch -M main
-git push -u origin main
+# Link to a new project (run from inside the repo folder)
+railway init
+
+# Deploy
+railway up
+
+# Get your live URL
+railway domain
 ```
 
-### Step 2 — Create a Render Web Service
+---
 
-**Option A — Blueprint (automatic, uses render.yaml):**
-1. Go to https://dashboard.render.com
-2. Click **New → Blueprint**
-3. Connect your GitHub account and select the `medspa-location-crawler` repo
-4. Render reads `render.yaml` and configures the service automatically
-5. Click **Apply** — Render builds and deploys
+### Verify the Deployment
 
-**Option B — Manual setup:**
-1. Go to https://dashboard.render.com
-2. Click **New → Web Service**
-3. Connect GitHub → select `medspa-location-crawler` repo
-4. Fill in these exact settings:
-
-| Field | Value |
-|---|---|
-| Name | `medspa-location-crawler` |
-| Runtime | `Python 3` |
-| Build Command | `pip install -r requirements.txt` |
-| Start Command | `gunicorn app.main:app --workers 2 --bind 0.0.0.0:$PORT --timeout 60` |
-| Instance Type | `Free` |
-
-5. Under **Environment Variables**, add:
-   - Key: `PYTHON_VERSION` / Value: `3.11.0`
-
-6. Click **Create Web Service**
-
-### Step 3 — Verify the Deployment
-
-Once Render shows **Live**, test your endpoint:
+Once deployed, test with your Railway URL:
 
 ```bash
-# Replace with your actual Render URL
-export API_URL="https://medspa-location-crawler.onrender.com"
+# Replace with your actual Railway URL
+export API_URL="https://your-app.up.railway.app"
 
 # Health check
 curl $API_URL/health
+# Expected: {"status": "ok", "version": "1.0.0"}
 
 # Test crawl
 curl -X POST $API_URL/extract-locations \
   -H "Content-Type: application/json" \
-  -d '{"website_url": "https://example.com", "company_name": "Test"}'
+  -d '{"website_url": "https://lashdolls.com", "company_name": "Lash Dolls"}'
 ```
 
 ---
@@ -163,7 +154,7 @@ In your Clay table, add an **HTTP API** column with these exact settings:
 | Setting | Value |
 |---|---|
 | Method | `POST` |
-| URL | `https://medspa-location-crawler.onrender.com/extract-locations` |
+| URL | `https://your-app.up.railway.app/extract-locations` |
 | Content-Type | `application/json` |
 | Body | `{"website_url": "{{Website}}", "company_name": "{{Company Name}}"}` |
 
@@ -205,35 +196,6 @@ In your Clay table, add an **HTTP API** column with these exact settings:
 
 ---
 
-## Warmup Strategy for Clay
-
-**The problem:** Render's free tier spins the service down after 15 minutes of inactivity. The first request after spin-down takes 30–50 seconds. Clay's HTTP API column has a hard timeout of 30 seconds — so a cold start **will fail** in Clay.
-
-**The solution:** Ping `/health` before running the enrichment table to wake the service.
-
-### How to Set It Up in Clay
-
-1. **Add a warmup column** (run this manually before each enrichment session):
-   - Add an HTTP API column
-   - Method: `GET`
-   - URL: `https://medspa-location-crawler.onrender.com/health`
-   - Run it on a single test row and wait for a `{"status": "ok"}` response
-
-2. **Wait ~5 seconds** after the health check succeeds
-
-3. **Run your extract-locations column** — the service is now warm and will respond in 5–15 seconds
-
-### Alternative: Keep-Alive with UptimeRobot (free)
-
-1. Sign up at https://uptimerobot.com (free tier)
-2. Add a new monitor:
-   - Type: `HTTP(s)`
-   - URL: `https://medspa-location-crawler.onrender.com/health`
-   - Monitoring interval: `5 minutes`
-3. UptimeRobot pings `/health` every 5 minutes, keeping the service warm — Clay will never hit a cold start
-
----
-
 ## Project Structure
 
 ```
@@ -251,8 +213,8 @@ medspa-location-crawler/
 ├── CLAUDE.md          # Project rules and AI coding instructions
 ├── skills.md          # Pattern reference for crawler and extractor
 ├── requirements.txt   # Pinned dependencies
-├── Procfile           # Gunicorn start command for Render
-├── render.yaml        # Render Blueprint config
+├── Procfile           # Gunicorn start command
+├── railway.json       # Railway deployment config
 ├── pytest.ini         # Pytest marker registration
 ├── conftest.py        # Pytest sys.path setup
 └── .gitignore
