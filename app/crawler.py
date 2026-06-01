@@ -241,8 +241,11 @@ def fetch_page(url: str, _retried: bool = False, _prev_ua: str = "") -> tuple:
             )
 
         # EC3 – cross-domain redirect
+        # Strip www. before comparing so example.com → www.example.com is allowed.
         final_netloc = urlparse(resp.url).netloc.lower()
-        if final_netloc and final_netloc != original_netloc:
+        def _root(netloc: str) -> str:
+            return netloc.removeprefix("www.")
+        if final_netloc and _root(final_netloc) != _root(original_netloc):
             return None, None, "cross_domain_redirect"
 
         # EC2 – rate-limited: wait 5 s then retry once
